@@ -20,6 +20,15 @@ go-adv-notes/
 │       ├── .env                # 本地环境变量文件（不入库）
 │       ├── main.go             # demo 入口
 │       └── dotenv_test.go      # 校验 name/job/age 是否被正确注入
+├── http/                       # 主题：net/http（客户端部分已完成，服务端待补）
+│   ├── README.md               # 笔记：请求流程、body 关闭、状态码、超时、鉴权头
+│   └── demo/
+│       ├── go.mod              # module golearn/http（依赖 godotenv、json-iterator/go）
+│       ├── go.sum
+│       ├── .env                # 本地密钥：DEEPSEEK_BASE_URL / DEEPSEEK_API_KEY（不入库）
+│       ├── main.go             # demo 入口
+│       └── client/
+│           └── api_test.go     # 客户端调用：公开接口 GET、带 Bearer 鉴权的 POST
 ├── reflection/                 # 主题：reflect
 │   ├── README.md               # 笔记：Type/Value 两件套 + demo 索引
 │   └── demo/
@@ -54,7 +63,7 @@ go-adv-notes/
 | module | `golearn/<主题>` |
 | 笔记 | `<主题>/README.md` |
 | 代码 | 只放在 `<主题>/demo`，测试与被测代码同包 |
-| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`） |
+| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、http 的 `json-iterator/go`） |
 
 ## go.work 使用
 
@@ -65,6 +74,7 @@ go 1.25.0
 
 use (
 	./dotenv/demo
+	./http/demo
 	./reflection/demo
 	./unsafe/demo
 )
@@ -79,6 +89,7 @@ use (
 | 列出模块名与磁盘路径 | `go list -m -f '{{.Path}} => {{.Dir}}'` |
 | 跑指定模块的测试 | `go test ./reflection/demo/... -v` |
 | 跑 dotenv demo 的测试 | `go test ./dotenv/demo/... -v` |
+| 跑 http demo（客户端）的测试 | `go test ./http/demo/... -v` |
 | 跑 unsafe demo 的测试 | `go test ./unsafe/demo/... -v` |
 | 模块内使用通配符 | `cd unsafe/demo && go test ./... -v` |
 | 跑全部模块的测试 | `go test -v $(go list -m -f '{{.Dir}}/...')` |
@@ -110,7 +121,7 @@ go test ./unsafe/demo/... -v
 cd unsafe/demo && go test ./... -v
 ```
 
-**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`reflection/demo`、`unsafe/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
+**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`http/demo`、`reflection/demo`、`unsafe/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
 
 ## 新增一个主题
 
@@ -133,5 +144,6 @@ go test ./generics/demo/... -v
 | 主题 | module | 状态 |
 | --- | --- | --- |
 | [dotenv](dotenv/README.md) | `golearn/dotenv` | 笔记 + demo（`.env` 语法、`Load`/`Overload`/`Read` 区别、加载路径与不覆盖已有变量） |
+| [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端部分待补） |
 | [reflection](reflection/README.md) | `golearn/reflection` | 笔记 + demo（Type 信息/标签/动态建类型、Value 可设置性与 MakeFunc/Call/Map） |
 | [unsafe](unsafe/README.md) | `golearn/unsafe` | 笔记 + demo（slice/map header 布局、string ⇄ []byte 零拷贝、私有成员读写、两条转换规则与 uintptr 纪律） |
