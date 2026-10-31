@@ -13,6 +13,13 @@ Go 进阶知识点学习仓库。**一个主题一个 module**，用 `go.work` �
 go-adv-notes/
 ├── go.work                     # workspace 定义：登记所有主题模块
 ├── README.md
+├── dotenv/                     # 主题：.env 配置加载（godotenv）
+│   ├── README.md               # 笔记：.env 语法、godotenv API、加载顺序
+│   └── demo/
+│       ├── go.mod              # module golearn/dotenv（依赖 godotenv v1.5.1）
+│       ├── .env                # 本地环境变量文件（不入库）
+│       ├── main.go             # demo 入口
+│       └── dotenv_test.go      # 校验 name/job/age 是否被正确注入
 ├── reflection/                 # 主题：reflect
 │   ├── README.md               # 笔记：Type/Value 两件套 + demo 索引
 │   └── demo/
@@ -47,6 +54,7 @@ go-adv-notes/
 | module | `golearn/<主题>` |
 | 笔记 | `<主题>/README.md` |
 | 代码 | 只放在 `<主题>/demo`，测试与被测代码同包 |
+| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`） |
 
 ## go.work 使用
 
@@ -56,6 +64,7 @@ go-adv-notes/
 go 1.25.0
 
 use (
+	./dotenv/demo
 	./reflection/demo
 	./unsafe/demo
 )
@@ -69,6 +78,7 @@ use (
 | 列出工作区内的所有模块 | `go list -m` |
 | 列出模块名与磁盘路径 | `go list -m -f '{{.Path}} => {{.Dir}}'` |
 | 跑指定模块的测试 | `go test ./reflection/demo/... -v` |
+| 跑 dotenv demo 的测试 | `go test ./dotenv/demo/... -v` |
 | 跑 unsafe demo 的测试 | `go test ./unsafe/demo/... -v` |
 | 模块内使用通配符 | `cd unsafe/demo && go test ./... -v` |
 | 跑全部模块的测试 | `go test -v $(go list -m -f '{{.Dir}}/...')` |
@@ -100,7 +110,7 @@ go test ./unsafe/demo/... -v
 cd unsafe/demo && go test ./... -v
 ```
 
-**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`reflection/demo`、`unsafe/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
+**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`reflection/demo`、`unsafe/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
 
 ## 新增一个主题
 
@@ -122,5 +132,6 @@ go test ./generics/demo/... -v
 
 | 主题 | module | 状态 |
 | --- | --- | --- |
+| [dotenv](dotenv/README.md) | `golearn/dotenv` | 笔记 + demo（`.env` 语法、`Load`/`Overload`/`Read` 区别、加载路径与不覆盖已有变量） |
 | [reflection](reflection/README.md) | `golearn/reflection` | 笔记 + demo（Type 信息/标签/动态建类型、Value 可设置性与 MakeFunc/Call/Map） |
 | [unsafe](unsafe/README.md) | `golearn/unsafe` | 笔记 + demo（slice/map header 布局、string ⇄ []byte 零拷贝、私有成员读写、两条转换规则与 uintptr 纪律） |
