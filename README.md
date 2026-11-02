@@ -20,15 +20,23 @@ go-adv-notes/
 │       ├── .env                # 本地环境变量文件（不入库）
 │       ├── main.go             # demo 入口
 │       └── dotenv_test.go      # 校验 name/job/age 是否被正确注入
-├── http/                       # 主题：net/http（客户端部分已完成，服务端待补）
-│   ├── README.md               # 笔记：请求流程、body 关闭、状态码、超时、鉴权头
+├── http/                       # 主题：net/http（客户端 + 服务端）
+│   ├── README.md               # 笔记：请求流程、路由 pattern、中间件、优雅关闭
 │   └── demo/
 │       ├── go.mod              # module golearn/http（依赖 godotenv、json-iterator/go）
 │       ├── go.sum
 │       ├── .env                # 本地密钥：DEEPSEEK_BASE_URL / DEEPSEEK_API_KEY（不入库）
 │       ├── main.go             # demo 入口
-│       └── client/
-│           └── api_test.go     # 客户端调用：公开接口 GET、带 Bearer 鉴权的 POST
+│       ├── client/
+│       │   └── api_test.go     # 客户端：公开接口 GET、带 Bearer 鉴权的 POST
+│       └── server/
+│           ├── server.go       # Store + NewMux：路由与 JSON 响应
+│           ├── middleware.go   # 中间件：日志、panic 恢复、trace id
+│           ├── server_test.go  # httptest.NewRecorder / NewServer
+│           ├── mux_test.go     # pattern 语义：PathValue、405、优先级、通配
+│           ├── middleware_test.go
+│           └── run/
+│               └── main.go     # go run ./http/demo/server/run
 ├── reflection/                 # 主题：reflect
 │   ├── README.md               # 笔记：Type/Value 两件套 + demo 索引
 │   └── demo/
@@ -89,7 +97,8 @@ use (
 | 列出模块名与磁盘路径 | `go list -m -f '{{.Path}} => {{.Dir}}'` |
 | 跑指定模块的测试 | `go test ./reflection/demo/... -v` |
 | 跑 dotenv demo 的测试 | `go test ./dotenv/demo/... -v` |
-| 跑 http demo（客户端）的测试 | `go test ./http/demo/... -v` |
+| 跑 http demo 的测试 | `go test ./http/demo/... -v` |
+| 运行 http 服务端 demo（:8080） | `go run ./http/demo/server/run` |
 | 跑 unsafe demo 的测试 | `go test ./unsafe/demo/... -v` |
 | 模块内使用通配符 | `cd unsafe/demo && go test ./... -v` |
 | 跑全部模块的测试 | `go test -v $(go list -m -f '{{.Dir}}/...')` |
@@ -144,6 +153,6 @@ go test ./generics/demo/... -v
 | 主题 | module | 状态 |
 | --- | --- | --- |
 | [dotenv](dotenv/README.md) | `golearn/dotenv` | 笔记 + demo（`.env` 语法、`Load`/`Overload`/`Read` 区别、加载路径与不覆盖已有变量） |
-| [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端部分待补） |
+| [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端：`ServeMux` pattern 与 `PathValue`、中间件、`httptest`、优雅关闭） |
 | [reflection](reflection/README.md) | `golearn/reflection` | 笔记 + demo（Type 信息/标签/动态建类型、Value 可设置性与 MakeFunc/Call/Map） |
 | [unsafe](unsafe/README.md) | `golearn/unsafe` | 笔记 + demo（slice/map header 布局、string ⇄ []byte 零拷贝、私有成员读写、两条转换规则与 uintptr 纪律） |
