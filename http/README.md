@@ -14,14 +14,17 @@ http/
     ├── main.go             # demo 入口
     ├── client/
     │   └── api_test.go     # 客户端：TestGet、TestPost
-    └── server/
-        ├── server.go       # Store 内存仓库 + NewMux 路由与 JSON 响应
-        ├── middleware.go   # Middleware/Chain、Logging、Recoverer、TraceID
-        ├── server_test.go  # 直连 ServeHTTP 与 httptest.NewServer
-        ├── mux_test.go     # pattern 语义：PathValue、405、优先级、通配
-        ├── middleware_test.go
-        └── run/
-            └── main.go     # 真实监听 + 优雅关闭
+    ├── server/
+    │   ├── server.go       # Store 内存仓库 + NewMux 路由与 JSON 响应
+    │   ├── middleware.go   # Middleware/Chain、Logging、Recoverer、TraceID
+    │   ├── server_test.go  # 直连 ServeHTTP 与 httptest.NewServer
+    │   ├── mux_test.go     # pattern 语义：PathValue、405、优先级、通配
+    │   ├── middleware_test.go
+    │   └── run/
+    │       └── main.go     # 真实监听 + 优雅关闭
+    └── graceful/
+        ├── main.go         # 端到端：起服务 → 客户端调用 → 优雅暂停
+        └── main_test.go    # 断言 Shutdown 等在途慢请求跑完
 ```
 
 依赖：`github.com/joho/godotenv`（读 `.env`）、`github.com/json-iterator/go`（JSON 编解码）。
@@ -171,6 +174,28 @@ _ = srv.Shutdown(shutdownCtx)
 4. 超时返回时在途连接仍在跑；需要强断就再 `srv.Close()`（你的 `main` 超时后直接退出，OS 会兜底断开）。
 5. hijacked 连接（WebSocket 等）Shutdown 不管，要用 `RegisterOnShutdown` 自己通知。
 
+### 端到端示例：起服务 → 客户端调用 → 优雅暂停（`demo/graceful`）
+
+`main.go` 把前面所有零件串成一条真实链路，跑一次就能看到「关闭时在途请求不被掐断」：
+
+```text
+net.Listen("127.0.0.1:0")     随机端口，避免和 :8080 冲突
+  → srv.Serve(ln) goroutine   后台监听
+  → 客户端 GET /healthz、POST /users、GET /users/{id}
+  → 慢请求 GET /slow?d=3s     另一个 goroutine，模拟在途业务
+  → <-ctx.Done()              1s 后自动触发（真实服务是 Ctrl+C）
+  → srv.Shutdown(5s ctx)      停收新连接，等慢请求跑完（约 2s）
+  → 新连接被拒                用 DisableKeepAlives 的 client 验证
+```
+
+关键点：
+
+- 服务端复用 `server.NewMux`，只在上面多挂一条 `GET /slow`，业务代码与关停代码分离。
+- `Shutdown` 返回耗时 ≈ 2s，说明它**确实在等**那个 3s 的请求；`TestRunGracefulShutdown` 用「总耗时 > 2s」把这个行为固定下来。
+- 关闭后再请求必须失败：`Shutdown` 关闭 listener 后，新连接连不上；`DisableKeepAlives` 避免复用旧连接导致误判。
+- 慢接口不读 `r.Context()`，所以不会被取消——这正是「优雅」：业务跑完再退，而不是中途掐断。
+- `encoding/json` 把 JSON 数字解到 `any` 时**统一是 `float64`**：`created["id"].(int)` 必然失败并得到 0（表现为请求打到 `/users/0` 拿 404），要断言 `.(float64)` 并检查 `ok`。
+
 ### 测试清单
 
 | 测试 | 覆盖点 |
@@ -188,6 +213,7 @@ _ = srv.Shutdown(shutdownCtx)
 | `TestRecoverer` | handler panic → 500 |
 | `TestTraceID` | `X-Trace-ID` 同时出现在响应头与 handler 的 context |
 | `TestLogging` | 日志里有方法、路径、状态码 |
+| `TestRunGracefulShutdown` | 端到端：慢请求在途时关闭，断言 Shutdown 等它跑完才返回 |
 
 ### 服务端结论
 
@@ -235,6 +261,9 @@ go test -v ./http/demo/server
 
 # 启动服务端 demo，监听 :8080
 go run ./http/demo/server/run
+
+# 端到端示例：自动起服务、调接口、优雅暂停（约 3s 跑完）
+go run ./http/demo/graceful
 
 # 另一个终端验证
 curl http://127.0.0.1:8080/healthz

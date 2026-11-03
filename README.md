@@ -35,8 +35,11 @@ go-adv-notes/
 │           ├── server_test.go  # httptest.NewRecorder / NewServer
 │           ├── mux_test.go     # pattern 语义：PathValue、405、优先级、通配
 │           ├── middleware_test.go
-│           └── run/
-│               └── main.go     # go run ./http/demo/server/run
+│           ├── run/
+│           │   └── main.go     # go run ./http/demo/server/run
+│           └── graceful/       # 端到端：起服务 → 客户端调用 → 优雅暂停
+│               ├── main.go
+│               └── main_test.go
 ├── reflection/                 # 主题：reflect
 │   ├── README.md               # 笔记：Type/Value 两件套 + demo 索引
 │   └── demo/
@@ -99,6 +102,7 @@ use (
 | 跑 dotenv demo 的测试 | `go test ./dotenv/demo/... -v` |
 | 跑 http demo 的测试 | `go test ./http/demo/... -v` |
 | 运行 http 服务端 demo（:8080） | `go run ./http/demo/server/run` |
+| 运行端到端优雅关闭 demo | `go run ./http/demo/graceful` |
 | 跑 unsafe demo 的测试 | `go test ./unsafe/demo/... -v` |
 | 模块内使用通配符 | `cd unsafe/demo && go test ./... -v` |
 | 跑全部模块的测试 | `go test -v $(go list -m -f '{{.Dir}}/...')` |
