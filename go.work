@@ -5,4 +5,5 @@ use (
 	./http/demo
 	./reflection/demo
 	./unsafe/demo
+	./wire/demo
 )

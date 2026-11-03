@@ -53,7 +53,7 @@ go-adv-notes/
 │           ├── value_test.go
 │           ├── op_test.go
 │           └── interface_test.go
-└── unsafe/                     # 主题：unsafe.Pointer
+├── unsafe/                     # 主题：unsafe.Pointer
     ├── README.md               # 笔记：指针转换、私有成员、零拷贝
     └── demo/
         ├── go.mod              # module golearn/unsafe
@@ -64,6 +64,27 @@ go-adv-notes/
         ├── zeroCopy_test.go
         └── model/
             └── programmer.go   # 私有字段的结构体，供访问私有成员实验用
+└── wire/                       # 主题：wire 编译期依赖注入
+    ├── README.md               # 笔记：Provider/Set/Injector、wireinject 标签、生成命令、报错排查
+    └── demo/
+        ├── go.mod              # module golearn/wire（依赖 google/wire v0.7.0）
+        ├── go.sum
+        ├── README.md           # 三步跑起来：装生成器 → wire ./wire → go run .
+        ├── main.go             # 依次调 InitHandler / InitAdvancedHandler
+        ├── config/
+        │   └── config.go       # DSN 独立类型 + Options（供 wire.Struct 拼装）
+        ├── controller/
+        │   └── controller.go   # Handler ← service.Service
+        ├── service/
+        │   ├── service.go      # Service ← dal.Dal
+        │   └── advanced.go     # TimedService + NewAdvancedService
+        ├── dal/
+        │   ├── dal.go          # Dal，链尾
+        │   └── advanced.go     # NewAdvancedDal → (Dal, func(), error)
+        └── wire/
+            ├── wire.go         # 基础 injector 桩（//go:build wireinject）
+            ├── wire_advanced.go # 进阶 injector：Value/Struct/Bind/cleanup
+            └── wire_gen.go     # 生成物（//go:build !wireinject），含两个 injector
 ```
 
 约定（新增主题时保持一致）：
@@ -74,7 +95,7 @@ go-adv-notes/
 | module | `golearn/<主题>` |
 | 笔记 | `<主题>/README.md` |
 | 代码 | 只放在 `<主题>/demo`，测试与被测代码同包 |
-| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、http 的 `json-iterator/go`） |
+| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、http 的 `json-iterator/go`、wire 的 `google/wire`） |
 
 ## go.work 使用
 
@@ -88,6 +109,7 @@ use (
 	./http/demo
 	./reflection/demo
 	./unsafe/demo
+	./wire/demo
 )
 ```
 
@@ -103,6 +125,10 @@ use (
 | 跑 http demo 的测试 | `go test ./http/demo/... -v` |
 | 运行 http 服务端 demo（:8080） | `go run ./http/demo/server/run` |
 | 运行端到端优雅关闭 demo | `go run ./http/demo/graceful` |
+| 运行 wire demo | `go run ./wire/demo` |
+| 生成/更新 wire_gen.go | `cd wire/demo && wire ./wire` |
+| 校验 wire 注入图（不写文件） | `cd wire/demo && wire check ./wire` |
+| 安装 wire 生成器 | `go install github.com/google/wire/cmd/wire@latest` |
 | 跑 unsafe demo 的测试 | `go test ./unsafe/demo/... -v` |
 | 模块内使用通配符 | `cd unsafe/demo && go test ./... -v` |
 | 跑全部模块的测试 | `go test -v $(go list -m -f '{{.Dir}}/...')` |
@@ -134,7 +160,7 @@ go test ./unsafe/demo/... -v
 cd unsafe/demo && go test ./... -v
 ```
 
-**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`http/demo`、`reflection/demo`、`unsafe/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
+**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`http/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
 
 ## 新增一个主题
 
@@ -160,3 +186,4 @@ go test ./generics/demo/... -v
 | [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端：`ServeMux` pattern 与 `PathValue`、中间件、`httptest`、优雅关闭） |
 | [reflection](reflection/README.md) | `golearn/reflection` | 笔记 + demo（Type 信息/标签/动态建类型、Value 可设置性与 MakeFunc/Call/Map） |
 | [unsafe](unsafe/README.md) | `golearn/unsafe` | 笔记 + demo（slice/map header 布局、string ⇄ []byte 零拷贝、私有成员读写、两条转换规则与 uintptr 纪律） |
+| [wire](wire/README.md) | `golearn/wire` | 笔记 + demo（三层 Provider/ProviderSet 聚合、`wireinject` 标签与生成命令、`wire_gen.go` 读法、`wire.Value`/`wire.Struct`/`wire.Bind` 进阶示例、常见报错表） |
