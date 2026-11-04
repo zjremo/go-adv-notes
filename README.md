@@ -20,6 +20,14 @@ go-adv-notes/
 │       ├── .env                # 本地环境变量文件（不入库）
 │       ├── main.go             # demo 入口
 │       └── dotenv_test.go      # 校验 name/job/age 是否被正确注入
+├── gjson/                      # 主题：gjson 只读 JSON 取值
+│   ├── README.md               # 笔记：路径语法、查询、修饰符、类型与精度
+│   └── demo/
+│       ├── go.mod              # module golearn/gjson（依赖 gjson v1.20.0、json-iterator/go）
+│       ├── go.sum
+│       ├── README.md           # 三步跑起来 + 预期输出
+│       ├── main.go             # demo 入口
+│       └── get_test.go         # 单字段/嵌套/下标/Exists/ForEach
 ├── http/                       # 主题：net/http（客户端 + 服务端）
 │   ├── README.md               # 笔记：请求流程、路由 pattern、中间件、优雅关闭
 │   └── demo/
@@ -54,16 +62,16 @@ go-adv-notes/
 │           ├── op_test.go
 │           └── interface_test.go
 ├── unsafe/                     # 主题：unsafe.Pointer
-    ├── README.md               # 笔记：指针转换、私有成员、零拷贝
-    └── demo/
-        ├── go.mod              # module golearn/unsafe
-        ├── main.go             # demo 入口
-        ├── op.go               # 用 unsafe 读 slice header 的 len/cap
-        ├── op_test.go
-        ├── zeroCopy.go         # string ⇄ []byte 零拷贝转换
-        ├── zeroCopy_test.go
-        └── model/
-            └── programmer.go   # 私有字段的结构体，供访问私有成员实验用
+│   ├── README.md               # 笔记：指针转换、私有成员、零拷贝
+│   └── demo/
+│       ├── go.mod              # module golearn/unsafe
+│       ├── main.go             # demo 入口
+│       ├── op.go               # 用 unsafe 读 slice header 的 len/cap
+│       ├── op_test.go
+│       ├── zeroCopy.go         # string ⇄ []byte 零拷贝转换
+│       ├── zeroCopy_test.go
+│       └── model/
+│           └── programmer.go   # 私有字段的结构体，供访问私有成员实验用
 └── wire/                       # 主题：wire 编译期依赖注入
     ├── README.md               # 笔记：Provider/Set/Injector、wireinject 标签、生成命令、报错排查
     └── demo/
@@ -95,7 +103,7 @@ go-adv-notes/
 | module | `golearn/<主题>` |
 | 笔记 | `<主题>/README.md` |
 | 代码 | 只放在 `<主题>/demo`，测试与被测代码同包 |
-| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、http 的 `json-iterator/go`、wire 的 `google/wire`） |
+| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、gjson 的 `tidwall/gjson`、http 的 `json-iterator/go`、wire 的 `google/wire`） |
 
 ## go.work 使用
 
@@ -106,6 +114,7 @@ go 1.25.0
 
 use (
 	./dotenv/demo
+	./gjson/demo
 	./http/demo
 	./reflection/demo
 	./unsafe/demo
@@ -122,6 +131,8 @@ use (
 | 列出模块名与磁盘路径 | `go list -m -f '{{.Path}} => {{.Dir}}'` |
 | 跑指定模块的测试 | `go test ./reflection/demo/... -v` |
 | 跑 dotenv demo 的测试 | `go test ./dotenv/demo/... -v` |
+| 跑 gjson demo 的测试 | `go test ./gjson/demo/... -v` |
+| 运行 gjson demo | `go run ./gjson/demo` |
 | 跑 http demo 的测试 | `go test ./http/demo/... -v` |
 | 运行 http 服务端 demo（:8080） | `go run ./http/demo/server/run` |
 | 运行端到端优雅关闭 demo | `go run ./http/demo/graceful` |
@@ -160,7 +171,7 @@ go test ./unsafe/demo/... -v
 cd unsafe/demo && go test ./... -v
 ```
 
-**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`http/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
+**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`gjson/demo`、`http/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
 
 ## 新增一个主题
 
@@ -183,6 +194,7 @@ go test ./generics/demo/... -v
 | 主题 | module | 状态 |
 | --- | --- | --- |
 | [dotenv](dotenv/README.md) | `golearn/dotenv` | 笔记 + demo（`.env` 语法、`Load`/`Overload`/`Read` 区别、加载路径与不覆盖已有变量） |
+| [gjson](gjson/README.md) | `golearn/gjson` | 笔记 + demo（路径语法、通配符/查询/管道、多路径与修饰符、`Result` 类型与 64 位精度、与 `encoding/json` 取舍） |
 | [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端：`ServeMux` pattern 与 `PathValue`、中间件、`httptest`、优雅关闭） |
 | [reflection](reflection/README.md) | `golearn/reflection` | 笔记 + demo（Type 信息/标签/动态建类型、Value 可设置性与 MakeFunc/Call/Map） |
 | [unsafe](unsafe/README.md) | `golearn/unsafe` | 笔记 + demo（slice/map header 布局、string ⇄ []byte 零拷贝、私有成员读写、两条转换规则与 uintptr 纪律） |
