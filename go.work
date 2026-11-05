@@ -4,6 +4,7 @@ use (
 	./dotenv/demo
 	./gjson/demo
 	./http/demo
+	./mock/demo
 	./reflection/demo
 	./unsafe/demo
 	./wire/demo

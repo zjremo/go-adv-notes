@@ -43,11 +43,24 @@ go-adv-notes/
 │           ├── server_test.go  # httptest.NewRecorder / NewServer
 │           ├── mux_test.go     # pattern 语义：PathValue、405、优先级、通配
 │           ├── middleware_test.go
+│           ├── upload_test.go   # multipart：单文件 / 多文件 / 错误分支
 │           ├── run/
 │           │   └── main.go     # go run ./http/demo/server/run
 │           └── graceful/       # 端到端：起服务 → 客户端调用 → 优雅暂停
 │               ├── main.go
 │               └── main_test.go
+├── mock/                       # 主题：gomock + testify 单元测试替身
+│   ├── README.md               # 笔记：MockGen 生成、EXPECT 剧本、断言与常见坑
+│   └── demo/
+│       ├── go.mod              # module golearn/mock（依赖 go.uber.org/mock、testify）
+│       ├── go.sum
+│       ├── main.go             # demo 入口
+│       ├── models/
+│       │   ├── repo.go         # UserRepo 接口 + go:generate 指令
+│       │   └── user_service.go # 被测对象 UserService.GetName
+│       ├── mocks/
+│       │   └── repo_mock.go    # mockgen 生成物（勿手改）
+│       └── repo_test.go        # 正常返回 / 返回错误 两个用例
 ├── reflection/                 # 主题：reflect
 │   ├── README.md               # 笔记：Type/Value 两件套 + demo 索引
 │   └── demo/
@@ -103,7 +116,7 @@ go-adv-notes/
 | module | `golearn/<主题>` |
 | 笔记 | `<主题>/README.md` |
 | 代码 | 只放在 `<主题>/demo`，测试与被测代码同包 |
-| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、gjson 的 `tidwall/gjson`、http 的 `json-iterator/go`、wire 的 `google/wire`） |
+| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、gjson 的 `tidwall/gjson`、http 的 `json-iterator/go`、mock 的 `go.uber.org/mock` + `testify`、wire 的 `google/wire`） |
 
 ## go.work 使用
 
@@ -116,6 +129,7 @@ use (
 	./dotenv/demo
 	./gjson/demo
 	./http/demo
+	./mock/demo
 	./reflection/demo
 	./unsafe/demo
 	./wire/demo
@@ -136,6 +150,10 @@ use (
 | 跑 http demo 的测试 | `go test ./http/demo/... -v` |
 | 运行 http 服务端 demo（:8080） | `go run ./http/demo/server/run` |
 | 运行端到端优雅关闭 demo | `go run ./http/demo/graceful` |
+| 跑 mock demo 的测试 | `go test ./mock/demo/... -v` |
+| 运行 mock demo | `go run ./mock/demo` |
+| 重新生成 mock | `cd mock/demo/models && go generate ./...` |
+| 安装 mockgen | `go install go.uber.org/mock/mockgen@latest` |
 | 运行 wire demo | `go run ./wire/demo` |
 | 生成/更新 wire_gen.go | `cd wire/demo && wire ./wire` |
 | 校验 wire 注入图（不写文件） | `cd wire/demo && wire check ./wire` |
@@ -171,7 +189,7 @@ go test ./unsafe/demo/... -v
 cd unsafe/demo && go test ./... -v
 ```
 
-**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`gjson/demo`、`http/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
+**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`gjson/demo`、`http/demo`、`mock/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
 
 ## 新增一个主题
 
@@ -196,6 +214,7 @@ go test ./generics/demo/... -v
 | [dotenv](dotenv/README.md) | `golearn/dotenv` | 笔记 + demo（`.env` 语法、`Load`/`Overload`/`Read` 区别、加载路径与不覆盖已有变量） |
 | [gjson](gjson/README.md) | `golearn/gjson` | 笔记 + demo（路径语法、通配符/查询/管道、多路径与修饰符、`Result` 类型与 64 位精度、与 `encoding/json` 取舍） |
 | [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端：`ServeMux` pattern 与 `PathValue`、中间件、`httptest`、优雅关闭） |
+| [mock](mock/README.md) | `golearn/mock` | 笔记 + demo（MockGen 生成 mock、`EXPECT` 录制期望与调用次数校验、testify `assert` 断言、常见坑与手写 stub 对比） |
 | [reflection](reflection/README.md) | `golearn/reflection` | 笔记 + demo（Type 信息/标签/动态建类型、Value 可设置性与 MakeFunc/Call/Map） |
 | [unsafe](unsafe/README.md) | `golearn/unsafe` | 笔记 + demo（slice/map header 布局、string ⇄ []byte 零拷贝、私有成员读写、两条转换规则与 uintptr 纪律） |
 | [wire](wire/README.md) | `golearn/wire` | 笔记 + demo（三层 Provider/ProviderSet 聚合、`wireinject` 标签与生成命令、`wire_gen.go` 读法、`wire.Value`/`wire.Struct`/`wire.Bind` 进阶示例、常见报错表） |

@@ -5,6 +5,7 @@ go 1.25.0
 require github.com/json-iterator/go v1.1.12
 
 require (
+	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 )
