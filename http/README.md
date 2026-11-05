@@ -18,6 +18,7 @@ http/
     │   ├── server.go       # Store 内存仓库 + NewMux 路由与 JSON 响应
     │   ├── middleware.go   # Middleware/Chain、Logging、Recoverer、TraceID
     │   ├── server_test.go  # 直连 ServeHTTP 与 httptest.NewServer
+    │   ├── upload_test.go  # multipart 上传：构造表单、单/多文件、错误分支
     │   ├── mux_test.go     # pattern 语义：PathValue、405、优先级、通配
     │   ├── middleware_test.go
     │   └── run/
@@ -91,6 +92,8 @@ if err := jsoniter.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 | `POST /users` | 创建用户，body 为 `{"name":..,"email":..}` | 201；body 非法或 `name` 为空时 400 |
 | `GET /users/{id}` | 按 id 查询 | 200；id 非整数 400；不存在 404 |
 | `DELETE /users/{id}` | 按 id 删除 | 204；不存在 404 |
+| `POST /upload` | 上传单个文件，`multipart/form-data`，字段名固定 `file` | 200，返回 filename/size/written；缺字段 400 |
+| `POST /upload-multi` | 上传多个文件，字段名任意，`FileName()` 非空的分片都算文件 | 200，返回 count 与 files；格式错误 400，总大小超限 413 |
 
 ### handler 写法
 
@@ -111,6 +114,57 @@ mux.HandleFunc("GET /users/{id}", func(w http.ResponseWriter, r *http.Request) {
 ```
 
 `http.Handler` 只有一个方法 `ServeHTTP(w http.ResponseWriter, r *http.Request)`；`http.HandlerFunc` 把普通函数转成 `Handler`，`HandleFunc` 再帮你注册到 `ServeMux`。
+
+### 文件上传（`POST /upload` / `POST /upload-multi`）
+
+两种写法，覆盖「一个文件」和「任意多个文件」：
+
+```go
+// 单文件：ParseMultipartForm + FormFile
+const maxMemory = 10 << 20 // 只决定内存/临时文件的分界，不是请求上限
+if err := r.ParseMultipartForm(maxMemory); err != nil { /* 400 */ }
+
+file, fh, err := r.FormFile("file") // 同名字段只取第一个
+defer file.Close()
+
+dst, _ := os.CreateTemp("", "upload-*")
+defer os.Remove(dst.Name())
+written, err := io.Copy(dst, file) // 边读边写，内存占用 = io.Copy 的 32KB 缓冲
+writeJSON(w, http.StatusOK, map[string]any{"filename": fh.Filename, "size": fh.Size, "written": written})
+```
+
+```go
+// 多文件：MaxBytesReader + MultipartReader 流式读
+r.Body = http.MaxBytesReader(w, r.Body, 32<<20) // 超限后 Read 返回 *http.MaxBytesError
+mr, err := r.MultipartReader()
+for {
+	part, err := mr.NextPart()
+	if err == io.EOF { break } // 正常结束
+	if err != nil { /* 413 或 400 */ }
+
+	if part.FileName() == "" { continue } // 普通字段跳过
+
+	n, err := io.Copy(io.Discard, part) // 真实场景换成 os.File：n 就是写入字节数
+	_ = n
+}
+```
+
+| | 单文件 `FormFile` | 多文件 `MultipartReader` |
+| --- | --- | --- |
+| 解析入口 | `ParseMultipartForm` + `FormFile` | `MultipartReader` + `NextPart` |
+| 内存/磁盘 | 超过 `maxMemory` 的部分落系统临时文件；整张表单挂在 `r.MultipartForm` | 只在流里走，不缓存整表；不在乎内容可直接 `io.Copy(io.Discard, part)` |
+| 字段数 | 名字固定，`FormFile` 只取第一个 | 数量不定、字段名任意，靠 `FileName()` 判断 |
+| 适用 | 简单表单、文件小 | 大文件、批量上传、边收边处理 |
+| 关闭 | `file.Close()` | 每个 `part` 处理完 `Close()`，`NextPart` 会自动关上一个 |
+| 超限 | 需自己包 `MaxBytesReader` | 错误类型是 `*http.MaxBytesError`，建议映射 413 |
+
+```shell
+# 单文件：字段名必须是 file
+curl -F "file=@./README.md" http://127.0.0.1:8080/upload
+
+# 多文件：字段名随意，非文件字段会被跳过
+curl -F "files=@./README.md" -F "files=@./go.mod" -F "note=batch" http://127.0.0.1:8080/upload-multi
+```
 
 ### 一个请求在服务端的一生
 
@@ -204,6 +258,10 @@ net.Listen("127.0.0.1:0")     随机端口，避免和 :8080 冲突
 | `TestCreateAndGet` | `httptest.NewServer` 真实 TCP 往返：POST 201 → GET 回读一致 |
 | `TestBadRequest` | JSON 非法 / `name` 为空 → 400，body 含 `"error"` |
 | `TestNotFoundAndDelete` | 不存在 → 404；DELETE → 204 且 body 为空；删除后 GET → 404 |
+| `TestUploadSingle` | `multipart.Writer` 构造单文件请求：200，filename/size/written 与内容一致 |
+| `TestUploadMissingFile` | 表单里没有 `file` 字段 → 400 |
+| `TestUploadMultiple` | 两个文件分片 + 一个普通字段：`count=2`，顺序与大小正确 |
+| `TestUploadMultiRejectsNonMultipart` | Content-Type 不是 multipart → 400 |
 | `TestPathValue` | `PathValue("id")` 直接取到路径参数 |
 | `TestMethodNotAllowed` | 方法不匹配自动 405，`Allow` 头含 GET |
 | `TestNotFoundRoute` | 无匹配 pattern → 404 |
@@ -250,6 +308,14 @@ net.Listen("127.0.0.1:0")     随机端口，避免和 :8080 冲突
 17. 收到 SIGINT → `Shutdown` 停收新连接、等在途请求；`ListenAndServe` 返回 `http.ErrServerClosed`，这是唯一可以忽略的错误（`errors.Is` 判断）。
 18. `Shutdown(ctx)` 的 ctx 只是超时兜底，不取消 handler；到点后进程退出，残余连接由 OS 强断。
 
+**文件上传**
+
+19. `ParseMultipartForm(maxMemory)` 的 `maxMemory` 只决定「多少留在内存、超出部分写临时文件」，**不是请求体上限**；真正的上限用 `http.MaxBytesReader`。
+20. `FormFile(key)` 只取**第一个**同名字段；要收多个文件就读 `r.MultipartForm.File[key]`，或用 `MultipartReader` 边读边处理。
+21. 流式循环的退出条件是 `err == io.EOF`；每个 `part` 用完要 `Close()`，`NextPart` 内部也会关上一个。
+22. 先把文件读写错误处理完再写响应：`writeJSON`/`WriteHeader` 之后任何 `writeError` 都写不出去（superfluous WriteHeader）。
+23. 客户端给的 `FileName()` 不可信，不能直接拼路径落盘（`../` 路径穿越）；示例统一写临时目录并生成文件名，返回前清理。
+
 ## 运行
 
 ```shell
@@ -271,6 +337,8 @@ curl http://127.0.0.1:8080/users
 curl -X POST http://127.0.0.1:8080/users -H "Content-Type: application/json" -d '{"name":"carol"}'
 curl http://127.0.0.1:8080/users/1
 curl -X DELETE http://127.0.0.1:8080/users/1
+curl -F "file=@./http/README.md" http://127.0.0.1:8080/upload
+curl -F "files=@./http/README.md" -F "files=@./http/demo/go.mod" http://127.0.0.1:8080/upload-multi
 ```
 
 ## 参考资料
