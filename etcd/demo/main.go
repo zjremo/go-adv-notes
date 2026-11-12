@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -198,6 +199,209 @@ func register(
 	}
 }
 
+func putSamples(ctx context.Context, cli *clientv3.Client, samples []*ServiceInstance, serviceName string) error {
+	if len(samples) == 0 {
+		return nil
+	}
+	prefix := serviceRoot + serviceName + "/"
+
+	txnKey := "/demo/txn/leader" // 直接造一个不存在的事务key，来一次交互完成批处理插入
+	ops := make([]clientv3.Op, 0, len(samples))
+	for _, sample := range samples {
+		key := fmt.Sprint(prefix, sample.Address)
+		value, err := jsoniter.MarshalToString(sample)
+		if err != nil {
+			return err
+		}
+		ops = append(ops, clientv3.OpPut(key, value))
+	}
+	// append txnLock
+	ops = append(ops, clientv3.OpPut(txnKey, "init-node"))
+
+	txnResp, err := cli.Txn(ctx).
+		If(clientv3.Compare(clientv3.Version(txnKey), "=", 0)).
+		Then(ops...).
+		Commit()
+	if err != nil {
+		return err
+	}
+
+	// succeeded is set to true if the compare evaluated to true or false otherwise.
+	if txnResp.Succeeded {
+		log.Println("Put samples successfully")
+	} else {
+		log.Println("Transaction key already exists!")
+	}
+	return nil
+}
+
+/*
+3. Service Discovery
+*/
+func discovery(
+	ctx context.Context,
+	cli *clientv3.Client,
+	serviceName string,
+) error {
+	// 先put一些数据作为样例
+	samples := []*ServiceInstance{
+		{
+			ID:      "1",
+			Address: "1",
+		},
+		{
+			ID:      "2",
+			Address: "2",
+		},
+		{
+			ID:      "3",
+			Address: "3",
+		},
+	}
+	if err := putSamples(ctx, cli, samples, serviceName); err != nil {
+		return err
+	}
+
+	log.Println("\n========== Service Discovery==========")
+
+	prefix := serviceRoot + serviceName + "/"
+
+	// Local service instance cache
+	var instances map[string]*ServiceInstance
+
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		// Step 1: Get current service instances
+		getCtx, cancel := context.WithTimeout(
+			ctx, 5*time.Second,
+		)
+
+		resp, err := cli.Get(
+			getCtx,
+			prefix,
+			clientv3.WithPrefix(),
+		)
+		cancel()
+
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			log.Printf("Get failed: %v\n", err)
+			time.Sleep(time.Second)
+			continue
+		}
+
+		// use resp.KVs to build instances
+		instances = make(map[string]*ServiceInstance)
+
+		for _, kv := range resp.Kvs {
+			var instance = new(ServiceInstance)
+			if err := jsoniter.Unmarshal(kv.GetValue(), instance); err != nil {
+				log.Printf("unmarshal kv failed, key=%s err=%v", string(kv.Key), err)
+				continue
+			}
+
+			instances[string(kv.GetKey())] = instance
+		}
+
+		log.Printf(
+			"Snapshot Revision: %d\n",
+			resp.Header.Revision,
+		)
+		printInstances(instances)
+
+		// Step 2: watch from snapshot revision + 1
+		watchCh := cli.Watch(
+			ctx,
+			prefix,
+			clientv3.WithPrefix(),
+			clientv3.WithRev(resp.Header.Revision+1),
+		)
+
+		restart := false
+		for watchResp := range watchCh {
+
+			if watchResp.Err() != nil {
+				log.Printf("Watch error: %v\n", watchResp.Err())
+				if watchResp.CompactRevision > 0 {
+					// 指定的revision已经被etcd压缩过，watch无法从这个历史版本再次开始
+					log.Println("Revision compacted. Resync required.")
+					restart = true
+					break
+				}
+
+				if ctx.Err() != nil {
+					return nil
+				}
+
+				restart = true
+				break
+			}
+
+			// 接收watch事件，server端变更
+			for _, event := range watchResp.Events {
+				key := string(event.Kv.GetKey())
+				switch event.Type {
+				case clientv3.EventTypePut: // Put 事件
+					// 解析出来value
+					instance := new(ServiceInstance)
+					if err := jsoniter.Unmarshal(event.Kv.GetValue(), instance); err != nil {
+						log.Printf("unmarshal kv failed, key=%s err=%v", string(event.Kv.Key), err)
+						continue
+					}
+
+					instances[key] = instance
+
+					log.Printf(
+						"[PUT] %s -> %s (Revision=%d)\n",
+						key,
+						instance.Address,
+						event.Kv.GetModRevision(),
+					)
+				case clientv3.EventTypeDelete:
+					delete(instances, key)
+
+					log.Printf(
+						"[DELETE] %s (Revision=%d)\n",
+						key,
+						event.Kv.GetModRevision(),
+					)
+				}
+				printInstances(instances)
+			}
+		}
+
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		if restart {
+			log.Println("Restarting discovery watch...")
+			time.Sleep(time.Second)
+			continue
+		}
+
+		// Watch channel closed unexpectedly
+		log.Println("Watch channel closed. Resyncing...")
+		time.Sleep(time.Second)
+	}
+}
+
+func printInstances(instances map[string]*ServiceInstance) {
+	addresses := make([]string, 0, len(instances))
+
+	for _, instance := range instances {
+		addresses = append(addresses, instance.Address)
+	}
+
+	sort.Strings(addresses)
+	log.Printf("Current instances: %v\n", addresses)
+}
+
 func main() {
 	t := &testing.T{}
 	if len(os.Args) < 2 {
@@ -248,6 +452,20 @@ func main() {
 			os.Args[2],
 			os.Args[3],
 		)
+	case "discover":
+		if len(os.Args) != 3 {
+			log.Println("Usage: go run . discover <service>")
+			os.Exit(1)
+		}
+
+		ctx, stop := signal.NotifyContext(
+			context.Background(),
+			os.Interrupt,
+			syscall.SIGTERM,
+		)
+		defer stop()
+
+		runErr = discovery(ctx, cli, os.Args[2])
 	default:
 		log.Println("Unknown command:", strings.TrimSpace(os.Args[1]))
 	}
