@@ -20,6 +20,13 @@ go-adv-notes/
 │       ├── .env                # 本地环境变量文件（不入库）
 │       ├── main.go             # demo 入口
 │       └── dotenv_test.go      # 校验 name/job/age 是否被正确注入
+├── etcd/                       # 主题：etcd clientv3（KV / 服务注册 / 服务发现 / 分布式锁）
+│   ├── README.md               # 笔记：四个功能源码导读、revision 语义、锁排队机制
+│   └── demo/
+│       ├── go.mod              # module golearn/etcd（依赖 client/v3 v3.7.3、godotenv、jsoniter、testify）
+│       ├── go.sum
+│       ├── .env                # etcdEndpoint / serviceRoot（不入库）
+│       └── main.go             # 子命令：kv / register / discover / lock
 ├── gjson/                      # 主题：gjson 只读 JSON 取值
 │   ├── README.md               # 笔记：路径语法、查询、修饰符、类型与精度
 │   └── demo/
@@ -116,17 +123,18 @@ go-adv-notes/
 | module | `golearn/<主题>` |
 | 笔记 | `<主题>/README.md` |
 | 代码 | 只放在 `<主题>/demo`，测试与被测代码同包 |
-| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、gjson 的 `tidwall/gjson`、http 的 `json-iterator/go`、mock 的 `go.uber.org/mock` + `testify`、wire 的 `google/wire`） |
+| 依赖 | 第三方依赖声明在该模块的 `go.mod`，由 `go.work` 统一解析版本（如 dotenv 的 `godotenv`、gjson 的 `tidwall/gjson`、http 的 `json-iterator/go`、mock 的 `go.uber.org/mock` + `testify`、etcd 的 `go.etcd.io/etcd/client/v3`、wire 的 `google/wire`） |
 
 ## go.work 使用
 
 根目录**只有** `go.work`，没有 `go.mod` —— 这是理解本仓库所有命令的前提。
 
 ```go
-go 1.25.0
+go 1.26.0
 
 use (
 	./dotenv/demo
+	./etcd/demo
 	./gjson/demo
 	./http/demo
 	./mock/demo
@@ -145,6 +153,10 @@ use (
 | 列出模块名与磁盘路径 | `go list -m -f '{{.Path}} => {{.Dir}}'` |
 | 跑指定模块的测试 | `go test ./reflection/demo/... -v` |
 | 跑 dotenv demo 的测试 | `go test ./dotenv/demo/... -v` |
+| 运行 etcd demo（基础 KV / 事务） | `cd etcd/demo && go run . kv` |
+| 注册服务实例（租约 + KeepAlive） | `cd etcd/demo && go run . register <service> <address>` |
+| 发现服务（快照 + Watch） | `cd etcd/demo && go run . discover <service>` |
+| 运行分布式锁 demo | `cd etcd/demo && go run . lock` |
 | 跑 gjson demo 的测试 | `go test ./gjson/demo/... -v` |
 | 运行 gjson demo | `go run ./gjson/demo` |
 | 跑 http demo 的测试 | `go test ./http/demo/... -v` |
@@ -169,6 +181,8 @@ use (
 | 把工作区依赖版本写回各模块 go.mod | `go work sync` |
 
 > 「跑全部模块」命令行依赖 `go list` 的输出做参数展开，仓库路径含空格时会失效；遇到这种情况就逐个模块跑，或改用 `cd <主题>/demo`。
+>
+> etcd demo 用 `godotenv.Load(".env")` 读**当前目录**的配置，所以命令里先 `cd etcd/demo` 再 `go run .`；直接 `go run ./etcd/demo kv` 会找不到 `.env`。
 
 ### 根目录不能用 `./...`直接测试
 
@@ -189,7 +203,7 @@ go test ./unsafe/demo/... -v
 cd unsafe/demo && go test ./... -v
 ```
 
-**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`gjson/demo`、`http/demo`、`mock/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
+**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`etcd/demo`、`gjson/demo`、`http/demo`、`mock/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
 
 ## 新增一个主题
 
@@ -212,6 +226,7 @@ go test ./generics/demo/... -v
 | 主题 | module | 状态 |
 | --- | --- | --- |
 | [dotenv](dotenv/README.md) | `golearn/dotenv` | 笔记 + demo（`.env` 语法、`Load`/`Overload`/`Read` 区别、加载路径与不覆盖已有变量） |
+| [etcd](etcd/README.md) | `golearn/etcd` | 笔记 + demo（clientv3 基础 KV 与事务选主、租约注册与 KeepAlive 自动过期、快照 + Watch 服务发现与断链重同步、Session + Mutex 分布式锁与 fencing token） |
 | [gjson](gjson/README.md) | `golearn/gjson` | 笔记 + demo（路径语法、通配符/查询/管道、多路径与修饰符、`Result` 类型与 64 位精度、与 `encoding/json` 取舍） |
 | [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端：`ServeMux` pattern 与 `PathValue`、中间件、`httptest`、优雅关闭） |
 | [mock](mock/README.md) | `golearn/mock` | 笔记 + demo（MockGen 生成 mock、`EXPECT` 录制期望与调用次数校验、testify `assert` 断言、常见坑与手写 stub 对比） |

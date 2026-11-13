@@ -17,6 +17,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/assert"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/concurrency"
 )
 
 var (
@@ -59,7 +60,7 @@ func basicKV(cli *clientv3.Client) error {
 	// Get
 	resp, err := cli.Get(ctx, "/demo/config/db")
 	if err != nil {
-		return nil
+		return err
 	}
 
 	for _, kv := range resp.Kvs {
@@ -92,7 +93,7 @@ func basicKV(cli *clientv3.Client) error {
 		Else(clientv3.OpGet(txnKey)).
 		Commit()
 	if err != nil {
-		return nil
+		return err
 	}
 
 	if txnResp.Succeeded {
@@ -402,6 +403,54 @@ func printInstances(instances map[string]*ServiceInstance) {
 	log.Printf("Current instances: %v\n", addresses)
 }
 
+/*
+4. Distributed Lock
+*/
+func distributedLock(cli *clientv3.Client) error {
+	log.Println("\n========== Distributed Lock ==========")
+
+	// Session creates a Lease and keeps it alive
+	session, err := concurrency.NewSession(
+		cli,
+		concurrency.WithTTL(10),
+	)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+
+	mutex := concurrency.NewMutex(
+		session,
+		"/locks/order-service",
+	)
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(), 20*time.Second,
+	)
+	defer cancel()
+
+	log.Println("Waiting for lock...")
+
+	if err := mutex.Lock(ctx); err != nil {
+		return err
+	}
+
+	log.Println("Lock acquired!")
+	time.Sleep(5 * time.Second)
+
+	log.Println("Critical section completed.")
+	unlockCtx, unlockCancel := context.WithTimeout(
+		context.Background(), 3*time.Second,
+	)
+	defer unlockCancel()
+
+	if err := mutex.Unlock(unlockCtx); err != nil {
+		return err
+	}
+	log.Println("Lock released.")
+	return nil
+}
+
 func main() {
 	t := &testing.T{}
 	if len(os.Args) < 2 {
@@ -466,6 +515,8 @@ func main() {
 		defer stop()
 
 		runErr = discovery(ctx, cli, os.Args[2])
+	case "lock":
+		runErr = distributedLock(cli)
 	default:
 		log.Println("Unknown command:", strings.TrimSpace(os.Args[1]))
 	}
