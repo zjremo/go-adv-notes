@@ -81,6 +81,17 @@ go-adv-notes/
 │           ├── value_test.go
 │           ├── op_test.go
 │           └── interface_test.go
+├── rpc/                        # 主题：标准库 net/rpc（gob + TCP）
+│   ├── README.md               # 笔记：注册规则、调用流程、错误传播、与 gRPC 取舍
+│   └── demo/
+│       ├── go.mod              # module golearn/rpc（只依赖标准库）
+│       ├── main.go             # demo 入口
+│       ├── models/
+│       │   └── model.go        # 两端共用的参数/返回类型
+│       ├── server/
+│       │   └── main.go         # 注册 Caculator，监听 127.0.0.1:7999
+│       └── client/
+│           └── main.go         # Dial 后调用 Add / Multiply
 ├── unsafe/                     # 主题：unsafe.Pointer
 │   ├── README.md               # 笔记：指针转换、私有成员、零拷贝
 │   └── demo/
@@ -139,6 +150,7 @@ use (
 	./http/demo
 	./mock/demo
 	./reflection/demo
+	./rpc/demo
 	./unsafe/demo
 	./wire/demo
 )
@@ -166,6 +178,8 @@ use (
 | 运行 mock demo | `go run ./mock/demo` |
 | 重新生成 mock | `cd mock/demo/models && go generate ./...` |
 | 安装 mockgen | `go install go.uber.org/mock/mockgen@latest` |
+| 运行 rpc 服务端（常驻 :7999） | `go run ./rpc/demo/server` |
+| 另开终端运行 rpc 客户端 | `go run ./rpc/demo/client` |
 | 运行 wire demo | `go run ./wire/demo` |
 | 生成/更新 wire_gen.go | `cd wire/demo && wire ./wire` |
 | 校验 wire 注入图（不写文件） | `cd wire/demo && wire check ./wire` |
@@ -203,7 +217,7 @@ go test ./unsafe/demo/... -v
 cd unsafe/demo && go test ./... -v
 ```
 
-**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`etcd/demo`、`gjson/demo`、`http/demo`、`mock/demo`、`reflection/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
+**不要在根目录补一个 `go.mod` 来解决这个报错**：嵌套 module（`dotenv/demo`、`etcd/demo`、`gjson/demo`、`http/demo`、`mock/demo`、`reflection/demo`、`rpc/demo`、`unsafe/demo`、`wire/demo`）会被父 module 的 `./...` 排除，报错只是换成 `matched no packages`，反而把 workspace 的依赖视图搅乱。
 
 ## 新增一个主题
 
@@ -231,5 +245,6 @@ go test ./generics/demo/... -v
 | [http](http/README.md) | `golearn/http` | 笔记 + demo（客户端：`NewRequest`/`Do`、Bearer 鉴权、jsoniter 解码、状态码与超时；服务端：`ServeMux` pattern 与 `PathValue`、中间件、`httptest`、优雅关闭） |
 | [mock](mock/README.md) | `golearn/mock` | 笔记 + demo（MockGen 生成 mock、`EXPECT` 录制期望与调用次数校验、testify `assert` 断言、常见坑与手写 stub 对比） |
 | [reflection](reflection/README.md) | `golearn/reflection` | 笔记 + demo（Type 信息/标签/动态建类型、Value 可设置性与 MakeFunc/Call/Map） |
+| [rpc](rpc/README.md) | `golearn/rpc` | 笔记 + demo（`net/rpc` 服务注册与 `Type.Method` 派发、gob 编解码、`Register` 签名规则、`Call`/`Go`、`ServerError`、与 gRPC 取舍） |
 | [unsafe](unsafe/README.md) | `golearn/unsafe` | 笔记 + demo（slice/map header 布局、string ⇄ []byte 零拷贝、私有成员读写、两条转换规则与 uintptr 纪律） |
 | [wire](wire/README.md) | `golearn/wire` | 笔记 + demo（三层 Provider/ProviderSet 聚合、`wireinject` 标签与生成命令、`wire_gen.go` 读法、`wire.Value`/`wire.Struct`/`wire.Bind` 进阶示例、常见报错表） |
